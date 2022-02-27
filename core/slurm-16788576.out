@@ -1,0 +1,18 @@
+Using GATK jar /opt/applications/gatk/4.1.9.0/gatk-package-4.1.9.0-local.jar
+Running:
+    java -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=true -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=2 -jar /opt/applications/gatk/4.1.9.0/gatk-package-4.1.9.0-local.jar MarkDuplicates -I /gpfs/home/snagaraja/ATACseqPipeline/data/bams/Activated_TR1.bam -O /gpfs/home/snagaraja/ATACseqPipeline/data/bams_noDups/Activated_TR1.bam -M /gpfs/home/snagaraja/ATACseqPipeline/data/MarkDups_Metrics/Activated_TR1.metrics --REMOVE_DUPLICATES TRUE
+15:59:36.092 INFO  NativeLibraryLoader - Loading libgkl_compression.so from jar:file:/opt/applications/gatk/4.1.9.0/gatk-package-4.1.9.0-local.jar!/com/intel/gkl/native/libgkl_compression.so
+[Sat Feb 26 15:59:36 PST 2022] MarkDuplicates --INPUT /gpfs/home/snagaraja/ATACseqPipeline/data/bams/Activated_TR1.bam --OUTPUT /gpfs/home/snagaraja/ATACseqPipeline/data/bams_noDups/Activated_TR1.bam --METRICS_FILE /gpfs/home/snagaraja/ATACseqPipeline/data/MarkDups_Metrics/Activated_TR1.metrics --REMOVE_DUPLICATES true --MAX_SEQUENCES_FOR_DISK_READ_ENDS_MAP 50000 --MAX_FILE_HANDLES_FOR_READ_ENDS_MAP 8000 --SORTING_COLLECTION_SIZE_RATIO 0.25 --TAG_DUPLICATE_SET_MEMBERS false --REMOVE_SEQUENCING_DUPLICATES false --TAGGING_POLICY DontTag --CLEAR_DT true --DUPLEX_UMI false --ADD_PG_TAG_TO_READS true --ASSUME_SORTED false --DUPLICATE_SCORING_STRATEGY SUM_OF_BASE_QUALITIES --PROGRAM_RECORD_ID MarkDuplicates --PROGRAM_GROUP_NAME MarkDuplicates --READ_NAME_REGEX <optimized capture of last three ':' separated fields as numeric values> --OPTICAL_DUPLICATE_PIXEL_DISTANCE 100 --MAX_OPTICAL_DUPLICATE_SET_SIZE 300000 --VERBOSITY INFO --QUIET false --VALIDATION_STRINGENCY STRICT --COMPRESSION_LEVEL 2 --MAX_RECORDS_IN_RAM 500000 --CREATE_INDEX false --CREATE_MD5_FILE false --GA4GH_CLIENT_SECRETS client_secrets.json --help false --version false --showHidden false --USE_JDK_DEFLATER false --USE_JDK_INFLATER false
+Feb 26, 2022 3:59:42 PM shaded.cloud_nio.com.google.auth.oauth2.ComputeEngineCredentials runningOnComputeEngine
+INFO: Failed to detect whether we are running on Google Compute Engine.
+[Sat Feb 26 15:59:42 PST 2022] Executing as snagaraja@imsb0606.cluster.net on Linux 3.10.0-1160.36.2.el7.x86_64 amd64; Java HotSpot(TM) 64-Bit Server VM 1.8.0_261-b12; Deflater: Intel; Inflater: Intel; Provider GCS is available; Picard version: Version:4.1.9.0
+INFO	2022-02-26 15:59:42	MarkDuplicates	Start of doWork freeMemory: 1846576040; totalMemory: 1869611008; maxMemory: 22522888192
+INFO	2022-02-26 15:59:42	MarkDuplicates	Reading input file and constructing read end information.
+INFO	2022-02-26 15:59:42	MarkDuplicates	Will retain up to 81604667 data points before spilling to disk.
+INFO	2022-02-26 15:59:52	MarkDuplicates	Read     1,000,000 records.  Elapsed time: 00:00:09s.  Time for last 1,000,000:    9s.  Last read position: NC_000067.7:51,960,105
+INFO	2022-02-26 15:59:52	MarkDuplicates	Tracking 66408 as yet unmatched pairs. 171 records in RAM.
+INFO	2022-02-26 15:59:57	MarkDuplicates	Read     2,000,000 records.  Elapsed time: 00:00:14s.  Time for last 1,000,000:    5s.  Last read position: NC_000068.8:22,479,841
+INFO	2022-02-26 15:59:57	MarkDuplicates	Tracking 84871 as yet unmatched pairs. 2416 records in RAM.
+INFO	2022-02-26 16:00:02	MarkDuplicates	Read     3,000,000 records.  Elapsed time: 00:00:19s.  Time for last 1,000,000:    5s.  Last read position: NC_000068.8:131,779,145
+INFO	2022-02-26 16:00:02	MarkDuplicates	Tracking 91606 as yet unmatched pairs. 215 records in RAM.
+slurmstepd: error: *** JOB 16788576 ON imsb0606 CANCELLED AT 2022-02-26T16:00:05 ***
