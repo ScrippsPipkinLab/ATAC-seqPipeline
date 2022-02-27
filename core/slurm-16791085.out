@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "/gpfs/home/snagaraja/ATACseqPipeline/core/bam_whitelist.py", line 9, in <module>
-    import pysam 
-ModuleNotFoundError: No module named 'pysam'

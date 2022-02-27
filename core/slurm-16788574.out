@@ -1,3 +1,0 @@
-(ERR): "/gpfs/group/pipkin/tvenable/MusRef" does not exist or is not a Bowtie 2 index
-Exiting now ...
-samtools sort: failed to read header from "-"
