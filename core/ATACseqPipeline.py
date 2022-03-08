@@ -68,7 +68,7 @@ bowtie2 -x {genome_path} -1 {sample['Read1']} -2 {sample['Read2']} | samtools so
                 os.system(f'sbatch {self.submission_path}/align_{sample["SampleName"]}.sh')
         return None
 
-    def remove_duplicates(self):
+    def legacy_remove_duplicates(self):
         '''
         Remove duplicates that are an artefact of PCR. This must be done in a paired-end sequencing manner. 
         Picard's MarkDups is good for paired end sequencing reads. Much more "intelligent" than samtools rmdups. 
@@ -187,7 +187,6 @@ samtools mpileup {bam} -o {pileup};
         '''
         if not os.path.exists(self.data_path + '/macs3/'):
             os.makedirs(self.data_path + '/macs3/')
-            print(self.data_path + '/macs3/')
         # Assign controls 
         c = np.unique((self.ssheet[self.ssheet['C/T']=='C']['Status']).to_numpy())
         t = np.unique((self.ssheet[self.ssheet['C/T']=='T']['Status']).to_numpy())
@@ -202,13 +201,56 @@ samtools mpileup {bam} -o {pileup};
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
-/gpfs/home/snagaraja/miniconda3/envs/ATACseq_env/bin/macs3 callpeak -t {treatment_files} -c {control_files};
+source ~/.bashrc;
+source activate ATACseq_env;
+macs3 callpeak -t {treatment_files} \
+-c {control_files} --outdir {self.data_path + '/macs3/'};
             '''
-            f = open(f'{self.submission_path}/pileup_{control}_{treatment}.sh', 'w+')
+            f = open(f'{self.submission_path}/macs3_{control}_{treatment}.sh', 'w+')
             f.write(cmd)
             f.close()
             if self.dry_run:
-                print(f'created {self.submission_path}/pileup_{control}_{treatment}.sh')
-            else: 
-                os.system(f'sbatch {self.submission_path}/pileup_{control}_{treatment}.sh')
+                print(f'created {self.submission_path}/macs3_{control}_{treatment}.sh')
+            else:
+                os.system(f'sbatch {self.submission_path}/macs3_{control}_{treatment}.sh')
         return None
+
+    def remove_duplicates(self):
+        '''
+        Upgraded duplicate removal using samtools markdups. This plays better with fastq's that have optical duplicates. 
+        '''
+        list_of_dirs = ['bams_collated', 'bams_fixmated', 'bams_sorted', 'bams_noDups']
+        for dir in list_of_dirs: 
+            if not os.path.exists(self.data_path + f'/{dir}/'):
+                os.makedirs(self.data_path + f'/{dir}/')
+        
+        for index, sample in self.ssheet.iterrows():
+            bam = f'{self.data_path + "/bams/" + sample["SampleName"] + ".bam"}'
+            collated = f'{self.data_path + "/bams_collated/" + sample["SampleName"] + ".bam"}'
+            fixmated = f'{self.data_path + "/bams_fixmated/" + sample["SampleName"] + ".bam"}'
+            sorted = f'{self.data_path + "/bams_sorted/" + sample["SampleName"] + ".bam"}'
+            noDups = f'{self.data_path + "/bams_noDups/" + sample["SampleName"] + ".bam"}'
+
+            cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128000
+module load samtools; 
+samtools collate -o {collated} {bam};
+samtools fixmate -m {collated} {fixmated};
+samtools sort -o {sorted} {fixmated};
+samtools markdup -r {sorted} {noDups};            
+            '''
+            f = open(f'{self.submission_path}/removeDups_{sample["SampleName"]}.sh', 'w+')
+            f.write(cmd)
+            f.close()
+            if self.dry_run:
+                print(f'created {self.submission_path}/removeDups_{sample["SampleName"]}.sh')
+            else: 
+                os.system(f'sbatch {self.submission_path}/removeDups_{sample["SampleName"]}.sh')
+        return None
+    
+    def job_monitor(self): 
+        return None 
+    
+    def run_pipeline(self): 
+        return None 

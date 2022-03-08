@@ -1,6 +1,6 @@
 #############
 # Remove reads that are not in a provided "whitelist" of chromosomes. 
-# Make sure your whitelist has the same echromosome nomenclature as the reference genome.
+# Make sure your whitelist has the same chromosome nomenclature as the reference genome.
 # I may want to save the statistics printed at the end here, so that I can plot them later.  
 #############
 
