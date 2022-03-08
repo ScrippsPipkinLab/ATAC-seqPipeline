@@ -9,7 +9,7 @@
 import pandas as pd 
 import numpy as np 
 import glob, os 
-
+import itertools
 
 
 class Pipeline(): 
@@ -35,7 +35,9 @@ class Pipeline():
         must be "Control", TechRep (Technical Replicate number)
         '''
         self.ssheet = pd.read_csv(ssheet_path, sep='\t')
-        print(self.ssheet.groupby('Status').count()['TechRep'])
+        #####
+        # print(self.ssheet.groupby('Status').count()['TechRep'])
+        #####
         return None 
 
     def align_fastqs(self, genome_path):
@@ -129,4 +131,84 @@ python {self.app_path + '/bam_whitelist.py'} {bam} {whitelist_file} {bam_noMito}
         '''
         Print FASTQC reports. 
         '''
+        if not os.path.exists(self.data_path + '/fastqc/'):
+            os.makedirs(self.data_path + '/fastqc/')
+
+        bam_list = []
+        for index, sample in self.ssheet.iterrows(): 
+            bam = f'{self.data_path + "/bams_noMito/" + sample["SampleName"] + ".bam"}'
+            bam_list = bam_list.append(bam)
+        bam_list = ' '.join(bam_list)
+        cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64000
+module load fastqc;
+fastqc {bam_list} -o {self.data_path + '/fastqc/'};
+        '''
+        f = open(f'{self.submission_path}/fastqc_{sample["SampleName"]}.sh', 'w+')
+        f.write(cmd)
+        f.close()
+        if self.dry_run:
+            print(f'created {self.submission_path}/fastqc_{sample["SampleName"]}.sh')
+        else:
+            os.system(f'sbatch {self.submission_path}/fastqc_{sample["SampleName"]}.sh')
         return None 
+    
+    def pileup_reads(self): 
+        '''
+        Pileup reads using samtools' mpileup. We could also consider implementing GATK's pileup in the future here. 
+        '''
+        if not os.path.exists(self.data_path + '/pileups/'):
+            os.makedirs(self.data_path + '/pileups/')
+            print(self.data_path + '/pileups/')
+
+        for index, sample in self.ssheet.iterrows():
+            bam = f'{self.data_path + "/bams_noMito/" + sample["SampleName"] + ".bam"}'
+            pileup = f'{self.data_path + "/pileups/" + sample["SampleName"] + ".pileup"}'
+            cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64000
+module load samtools; 
+samtools mpileup {bam} -o {pileup};            
+            '''
+            f = open(f'{self.submission_path}/pileup_{sample["SampleName"]}.sh', 'w+')
+            f.write(cmd)
+            f.close()
+            if self.dry_run:
+                print(f'created {self.submission_path}/pileup_{sample["SampleName"]}.sh')
+            else: 
+                os.system(f'sbatch {self.submission_path}/pileup_{sample["SampleName"]}.sh')
+        return None 
+    
+    def call_peaks(self): 
+        '''
+        Use MACS3 to call peaks. MACS3 now does a lot of the downstream processing (peak calling,
+        differential peaks & basic plotting)
+        '''
+        if not os.path.exists(self.data_path + '/macs3/'):
+            os.makedirs(self.data_path + '/macs3/')
+            print(self.data_path + '/macs3/')
+        # Assign controls 
+        c = np.unique((self.ssheet[self.ssheet['C/T']=='C']['Status']).to_numpy())
+        t = np.unique((self.ssheet[self.ssheet['C/T']=='T']['Status']).to_numpy())
+        combs = list(itertools.product(c, t))
+        for control, treatment in combs: 
+            control_files = (self.ssheet[self.ssheet['Status']==control]['SampleName']).to_numpy()
+            control_files = [f'{self.data_path + "/bams_noMito/" + bam_file + ".bam"}' for bam_file in control_files]
+            control_files = ' '.join(control_files)
+            treatment_files = (self.ssheet[self.ssheet['Status']==treatment]['SampleName']).to_numpy()
+            treatment_files = [f'{self.data_path + "/bams_noMito/" + bam_file + ".bam"}' for bam_file in treatment_files]
+            treatment_files = ' '.join(treatment_files)
+            cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64000
+/gpfs/home/snagaraja/miniconda3/envs/ATACseq_env/bin/macs3 callpeak -t {treatment_files} -c {control_files};
+            '''
+            f = open(f'{self.submission_path}/pileup_{control}_{treatment}.sh', 'w+')
+            f.write(cmd)
+            f.close()
+            if self.dry_run:
+                print(f'created {self.submission_path}/pileup_{control}_{treatment}.sh')
+            else: 
+                os.system(f'sbatch {self.submission_path}/pileup_{control}_{treatment}.sh')
+        return None
