@@ -319,6 +319,5 @@ macs3 callpeak -t {bam} \
         return None 
 
     def htseq_count():
-        
-        return None 
+        return None
 print("Latest")
