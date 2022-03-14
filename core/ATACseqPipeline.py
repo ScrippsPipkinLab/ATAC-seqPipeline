@@ -137,8 +137,9 @@ python {self.app_path + '/bam_whitelist.py'} {bam} {whitelist_file} {bam_noMito}
         bam_list = []
         for index, sample in self.ssheet.iterrows(): 
             bam = f'{self.data_path + "/bams_noMito/" + sample["SampleName"] + ".bam"}'
-            bam_list = bam_list.append(bam)
+            bam_list.append(bam)
         bam_list = ' '.join(bam_list)
+        # print(bam_list)
         cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
@@ -180,18 +181,20 @@ samtools mpileup {bam} -o {pileup};
                 os.system(f'sbatch {self.submission_path}/pileup_{sample["SampleName"]}.sh')
         return None 
     
-    def call_peaks(self): 
+    def call_peaks_joint(self): 
         '''
         Use MACS3 to call peaks. MACS3 now does a lot of the downstream processing (peak calling,
-        differential peaks & basic plotting)
+        differential peaks & basic plotting). This function uses MACS3 to call peaks on treatment 
+        over control. Unsure if this is the best way to do this... keeping this until comparisons can be 
+        made.
         '''
         if not os.path.exists(self.data_path + '/macs3/'):
             os.makedirs(self.data_path + '/macs3/')
         # Assign controls 
         c = np.unique((self.ssheet[self.ssheet['C/T']=='C']['Status']).to_numpy())
         t = np.unique((self.ssheet[self.ssheet['C/T']=='T']['Status']).to_numpy())
-        combs = list(itertools.product(c, t))
-        for control, treatment in combs: 
+        self.experimental_combs = list(itertools.product(c, t))
+        for control, treatment in self.experimental_combs: 
             control_files = (self.ssheet[self.ssheet['Status']==control]['SampleName']).to_numpy()
             control_files = [f'{self.data_path + "/bams_noMito/" + bam_file + ".bam"}' for bam_file in control_files]
             control_files = ' '.join(control_files)
@@ -204,7 +207,9 @@ samtools mpileup {bam} -o {pileup};
 source ~/.bashrc;
 source activate ATACseq_env;
 macs3 callpeak -t {treatment_files} \
--c {control_files} --outdir {self.data_path + '/macs3/'};
+-c {control_files} --outdir {self.data_path + '/macs3/'} \
+--name {control}_{treatment} --format BAMPE -g mm --nomodel \
+-q 0.01 --call-summits -B;
             '''
             f = open(f'{self.submission_path}/macs3_{control}_{treatment}.sh', 'w+')
             f.write(cmd)
@@ -248,9 +253,72 @@ samtools markdup -r {sorted} {noDups};
             else: 
                 os.system(f'sbatch {self.submission_path}/removeDups_{sample["SampleName"]}.sh')
         return None
+    def get_stats(self):
+        '''
+        Calculate statistics (% mapped, % duplicate, % Mitochondrial) from BAM
+        '''
+        if not os.path.exists(self.data_path + '/stats/'):
+            os.makedirs(self.data_path + '/stats/')
+        if not os.path.exists(self.data_path + '/flagstats/'):
+            os.makedirs(self.data_path + '/flagstats/')
+        for index, sample in self.ssheet.iterrows():
+            bam = f'{self.data_path + "/bams/" + sample["SampleName"] + ".bam"}'
+            noDups = f'{self.data_path + "/bams_noDups/" + sample["SampleName"] + ".bam"}'
+            noMito = f'{self.data_path + "/bams_noMito/" + sample["SampleName"] + ".bam"}'
+            peaks = f'{self.data_path + "/macs3/" + narrowPeak_contructor + ".narrowPeak"}'
+
+            cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64000
+module load samtools;
+# Total and mapped reads
+samtools flagstat {bam} > {self.data_path + "/flagstats/" + sample["SampleName"] + ".flagstat"};
+# Duplicate Reads 
+samtools view -c {noDups} > {self.data_path + "/stats/" + sample["SampleName"] + ".dups"};
+# Mitochondrial Reads
+samtools view -c {noMito} > {self.data_path + "/stats/" + sample["SampleName"] + ".mito"};
+# Number of Peaks 
+wc -l {peaks} > {self.data_path + "/stats/" + sample["SampleName"] + ".peaks"};
+            '''
+
+        return None 
     
+    def call_peaks(self):
+        '''
+        Use MACS3 to call peaks. MACS3 now does a lot of the downstream processing (peak calling,
+        differential peaks & basic plotting)
+        '''
+        if not os.path.exists(self.data_path + '/macs3/'):
+            os.makedirs(self.data_path + '/macs3/')
+        ##### NEW 
+        for index, sample in self.ssheet.iterrows():
+            bam = f'{self.data_path + "/bams_noDups/" + sample["SampleName"] + ".bam"}'
+            cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64000
+source ~/.bashrc;
+source activate ATACseq_env;
+macs3 callpeak -t {bam} \
+--outdir {self.data_path + '/macs3/'} \
+--name {sample["SampleName"]} --format BAMPE -g mm --nomodel \
+-q 0.01 --call-summits -B;
+            '''
+            f = open(f'{self.submission_path}/macs3_{sample["SampleName"]}.sh', 'w+')
+            f.write(cmd)
+            f.close()
+            if self.dry_run:
+                print(f'created {self.submission_path}/macs3_{sample["SampleName"]}.sh')
+            else:
+                os.system(f'sbatch {self.submission_path}/macs3_{sample["SampleName"]}.sh') 
+        return None 
+
     def job_monitor(self): 
         return None 
     
     def run_pipeline(self): 
         return None 
+
+    def htseq_count():
+        
+        return None 
+print("Latest")
