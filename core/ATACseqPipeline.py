@@ -12,6 +12,8 @@ import glob, os
 import itertools
 
 
+
+
 class Pipeline(): 
     def __init__(self, data_path, app_path, dry_run=False, conda=''): 
         print(os.getcwd())
@@ -34,6 +36,7 @@ class Pipeline():
         Read2 (Path to read 2 of FASTQ file), Status (Atleast one sample
         must be "Control", TechRep (Technical Replicate number)
         '''
+        self.ssheet_path = ssheet_path
         self.ssheet = pd.read_csv(ssheet_path, sep='\t')
         #####
         # print(self.ssheet.groupby('Status').count()['TechRep'])
@@ -265,7 +268,7 @@ samtools markdup -r {sorted} {noDups};
             bam = f'{self.data_path + "/bams/" + sample["SampleName"] + ".bam"}'
             noDups = f'{self.data_path + "/bams_noDups/" + sample["SampleName"] + ".bam"}'
             noMito = f'{self.data_path + "/bams_noMito/" + sample["SampleName"] + ".bam"}'
-            peaks = f'{self.data_path + "/macs3/" + narrowPeak_contructor + ".narrowPeak"}'
+            peaks = f'{self.data_path + "/macs3/" + sample["SampleName"] + "_peaks.narrowPeak"}'
 
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
@@ -280,7 +283,13 @@ samtools view -c {noMito} > {self.data_path + "/stats/" + sample["SampleName"] +
 # Number of Peaks 
 wc -l {peaks} > {self.data_path + "/stats/" + sample["SampleName"] + ".peaks"};
             '''
-
+            f = open(f'{self.submission_path}/get_stats_{sample["SampleName"]}.sh', 'w+')
+            f.write(cmd)
+            f.close()
+            if self.dry_run:
+                print(f'created {self.submission_path}/get_stats_{sample["SampleName"]}.sh')
+            else: 
+                os.system(f'sbatch {self.submission_path}/get_stats_{sample["SampleName"]}.sh')
         return None 
     
     def call_peaks(self):
@@ -301,7 +310,7 @@ source activate ATACseq_env;
 macs3 callpeak -t {bam} \
 --outdir {self.data_path + '/macs3/'} \
 --name {sample["SampleName"]} --format BAMPE -g mm --nomodel \
--q 0.01 --call-summits -B;
+-q 0.05 --call-summits -B;
             '''
             f = open(f'{self.submission_path}/macs3_{sample["SampleName"]}.sh', 'w+')
             f.write(cmd)
@@ -320,4 +329,82 @@ macs3 callpeak -t {bam} \
 
     def htseq_count():
         return None
-print("Latest")
+
+    def feature_counts(self):
+        '''
+        Generate counts from bam 
+        '''
+        return None 
+    
+    def filter_blacklist(self, blacklist_file): 
+        '''
+        Remove regions that are known to interfere with ATAC-seq & Chip-seq 
+        experiments. 
+        bedtools intersect -v -a -b 
+        '''
+        if not os.path.exists(self.data_path + '/no_blacklist/'):
+            os.makedirs(self.data_path + '/no_blacklist/')
+        for index, sample in self.ssheet.iterrows(): 
+            peaks = f'{self.data_path + "/macs3/" + sample["SampleName"] + "_peaks.narrowPeak"}'
+            filtered = f'{self.data_path + "/no_blacklist/" + sample["SampleName"] + "_peaks.narrowPeak"}'
+            cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64000
+module load bedtools; 
+bedtools intersect -v -a {peaks} -b {blacklist_file} > {filtered};
+            '''
+            f = open(f'{self.submission_path}/filter_peaks_{sample["SampleName"]}.sh', 'w+')
+            f.write(cmd)
+            f.close()
+            if self.dry_run:
+                print(f'created {self.submission_path}/filter_peaks_{sample["SampleName"]}.sh')
+            else:
+                os.system(f'sbatch {self.submission_path}/filter_peaks_{sample["SampleName"]}.sh') 
+        return None 
+
+    def get_insert_sizes(self): 
+        if not os.path.exists(self.data_path + '/insert_sizes/'):
+            os.makedirs(self.data_path + '/insert_sizes/')
+        for index, sample in self.ssheet.iterrows(): 
+            bam = f'{self.data_path + "/bams_noDups/" + sample["SampleName"] + ".bam"}'
+            insert_sizes = f'{self.data_path + "/insert_sizes/" + sample["SampleName"] + ".sizes"}'
+            cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64000
+module load samtools;
+samtools view {bam} | cut -f9 > {insert_sizes};
+            '''
+            f = open(f'{self.submission_path}/get_isize_{sample["SampleName"]}.sh', 'w+')
+            f.write(cmd)
+            f.close()
+            if self.dry_run:
+                print(f'created {self.submission_path}/get_isize_{sample["SampleName"]}.sh')
+            else:
+                os.system(f'sbatch {self.submission_path}/get_isize_{sample["SampleName"]}.sh') 
+        return None 
+    
+    def plot_insert_sizes(self):
+        '''
+        Read in insert sizes (list of integers) and plot density function.
+        '''
+        if not os.path.exists(self.data_path + '/insert_sizes/'):
+            os.makedirs(self.data_path + '/insert_sizes/')
+        if not os.path.exists(self.data_path + '/figs/'):
+            os.makedirs(self.data_path + '/figs/')
+        cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64000
+source ~/.bashrc;
+source activate ATACseq_env;
+python plot_insertsizes.py {self.data_path} {self.ssheet_path};
+        '''
+        f = open(f'{self.submission_path}/plot_isize.sh', 'w+')
+        f.write(cmd)
+        f.close()
+        if self.dry_run:
+            print(f'created {self.submission_path}/plot_isize.sh')
+        else:
+            os.system(f'sbatch {self.submission_path}/plot_isize.sh')
+        return None 
+
+    
