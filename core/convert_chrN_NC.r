@@ -17,3 +17,4 @@ final <- merged[, c("chr", "start", "end")]
 
 write.table(final, "/gpfs/home/snagaraja/ATACseqPipeline/refs/blacklist.bed",
             quote = FALSE, sep = "\t", col.names = FALSE, row.names = FALSE)
+

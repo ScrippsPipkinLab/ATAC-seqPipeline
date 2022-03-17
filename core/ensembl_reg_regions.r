@@ -1,0 +1,3 @@
+library(biomaRt)
+
+Regulatory.Regions.Query <- "http://useast.ensembl.org/biomart/martview/1d2bf1911f9d24f7139611cb50ab0add?VIRTUALSCHEMANAME=default&ATTRIBUTES=mmusculus_regulatory_feature.default.regulatory_feature.chromosome_name|mmusculus_regulatory_feature.default.regulatory_feature.chromosome_start|mmusculus_regulatory_feature.default.regulatory_feature.chromosome_end|mmusculus_regulatory_feature.default.regulatory_feature.feature_type_name&FILTERS=&VISIBLEPANEL=mainpanel"
