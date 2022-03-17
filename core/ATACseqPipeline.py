@@ -26,7 +26,12 @@ class Pipeline():
         if not os.path.exists(self.submission_path):
             os.makedirs(self.submission_path)
         self.dry_run = dry_run
+
         # !!!!!!!!!  Load the conda environment here
+        return None 
+    
+    def configure_envs(self):
+        os.system('conda env create --file envs/ATACseq_env.yml')
         return None 
     
     def from_ssheet(self, ssheet_path): 
@@ -41,13 +46,12 @@ class Pipeline():
         #####
         # print(self.ssheet.groupby('Status').count()['TechRep'])
         #####
+
         return None 
 
     def align_fastqs(self, genome_path):
         '''
         Align fastq files using Bowtie2. Genome must be pre-indexed. 
-        #SBATCH -J bowtie2_job
-        #SBATCH --output=slurm-outputs/slurm-%j-%x.out
         ''' 
         if not os.path.exists(self.data_path + '/bams/'):
             os.makedirs(self.data_path + '/bams/')
@@ -58,6 +62,8 @@ class Pipeline():
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128000
+source ~/.bashrc;
+source activate ATACseq_env;
 module load bowtie2;
 module load samtools;
 bowtie2 -x {genome_path} -1 {sample['Read1']} -2 {sample['Read2']} | samtools sort -o {self.data_path + '/bams/' +  sample_name};
@@ -90,6 +96,8 @@ bowtie2 -x {genome_path} -1 {sample['Read1']} -2 {sample['Read2']} | samtools so
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+source ~/.bashrc;
+source activate ATACseq_env;
 module load gatk;
 gatk MarkDuplicates -I {bam} -O {bam_noDups} -M {metrics_file} --REMOVE_DUPLICATES TRUE;        
                 '''
@@ -118,7 +126,8 @@ gatk MarkDuplicates -I {bam} -O {bam_noDups} -M {metrics_file} --REMOVE_DUPLICAT
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
-# conda activate ATACseq_env;
+source ~/.bashrc;
+source activate ATACseq_env;
 python {self.app_path + '/bam_whitelist.py'} {bam} {whitelist_file} {bam_noMito};
             '''
             f = open(f'{self.submission_path}/removeMito_{sample["SampleName"]}.sh', 'w+')
@@ -146,6 +155,8 @@ python {self.app_path + '/bam_whitelist.py'} {bam} {whitelist_file} {bam_noMito}
         cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+source ~/.bashrc;
+source activate ATACseq_env;
 module load fastqc;
 fastqc {bam_list} -o {self.data_path + '/fastqc/'};
         '''
@@ -172,6 +183,8 @@ fastqc {bam_list} -o {self.data_path + '/fastqc/'};
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+source ~/.bashrc;
+source activate ATACseq_env;
 module load samtools; 
 samtools mpileup {bam} -o {pileup};            
             '''
@@ -242,6 +255,8 @@ macs3 callpeak -t {treatment_files} \
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128000
+source ~/.bashrc;
+source activate ATACseq_env;
 module load samtools; 
 samtools collate -o {collated} {bam};
 samtools fixmate -m {collated} {fixmated};
@@ -273,6 +288,8 @@ samtools markdup -r {sorted} {noDups};
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+source ~/.bashrc;
+source activate ATACseq_env;
 module load samtools;
 # Total and mapped reads
 samtools flagstat {bam} > {self.data_path + "/flagstats/" + sample["SampleName"] + ".flagstat"};
@@ -310,7 +327,7 @@ source activate ATACseq_env;
 macs3 callpeak -t {bam} \
 --outdir {self.data_path + '/macs3/'} \
 --name {sample["SampleName"]} --format BAMPE -g mm --nomodel \
--q 0.05 --call-summits -B;
+-q 0.1 --call-summits -B;
             '''
             f = open(f'{self.submission_path}/macs3_{sample["SampleName"]}.sh', 'w+')
             f.write(cmd)
@@ -327,15 +344,92 @@ macs3 callpeak -t {bam} \
     def run_pipeline(self): 
         return None 
 
-    def htseq_count():
-        return None
-
-    def feature_counts(self):
+    def peak_counts(self):
         '''
-        Generate counts from bam 
+        Generate counts from bam using HTseq-count 
         '''
+        if not os.path.exists(self.data_path + '/counts/'):
+            os.makedirs(self.data_path + '/counts/')
+        merged_peaks = f'{self.data_path + "/merged/merged_peaks.bed"}'
+        bam_files = []
+        for index, sample in self.ssheet.iterrows():
+            bam = f'{self.data_path + "/bams_noDups/" + sample["SampleName"] + ".bam"}'
+            bam_files.append(bam)
+        bam_files = ' '.join(bam_files)
+        cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64000
+source ~/.bashrc;
+source activate ATACseq_env;
+htseq-count -i peak_name --type=Peak --stranded=no {bam_files} {merged_peaks} > {self.data_path + '/counts/' + 'combined_counts.counts'};
+        '''
+        f = open(f'{self.submission_path}/peak_counts.sh', 'w+')
+        f.write(cmd)
+        f.close()
+        if self.dry_run:
+            print(f'created {self.submission_path}/peak_counts.sh')
+        else:
+            os.system(f'sbatch {self.submission_path}/peak_counts.sh')
         return None 
     
+    def legacy_merge_peaks(self): 
+        '''
+        Merge Peaks to create a single peak file. "union" of peaks, not intersection. 
+        '''
+        if not os.path.exists(self.data_path + '/merged/'):
+            os.makedirs(self.data_path + '/merged/')
+        all_peaks = []
+        for index, sample in self.ssheet.iterrows():
+            peaks = f'{self.data_path + "/macs3/" + sample["SampleName"] + "_peaks.narrowPeak"}'
+            all_peaks.append(peaks)
+        all_peaks = ' '.join(all_peaks)
+        # print(all_peaks)
+        cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64000
+source ~/.bashrc;
+source activate ATACseq_env;
+module load bedtools; 
+cat {all_peaks} | sort -k1,1 -k2,2n | bedtools merge -i - > {self.data_path + "/merged/" + "merged_peaks.bed"};
+        '''
+        f = open(f'{self.submission_path}/merge_peaks.sh', 'w+')
+        f.write(cmd)
+        f.close()
+        if self.dry_run:
+            print(f'created {self.submission_path}/merge_peaks.sh')
+        else:
+            os.system(f'sbatch {self.submission_path}/merge_peaks.sh')
+        return None 
+
+    def merge_peaks(self): 
+        '''
+        Merge Peaks to create a single peak file. "union" of peaks, not intersection. use HOMER mergePeaks
+        '''
+        if not os.path.exists(self.data_path + '/merged/'):
+            os.makedirs(self.data_path + '/merged/')
+        all_peaks = []
+        for index, sample in self.ssheet.iterrows():
+            peaks = f'{self.data_path + "/macs3/" + sample["SampleName"] + "_peaks.narrowPeak"}'
+            all_peaks.append(peaks)
+        all_peaks = ' '.join(all_peaks)
+        # print(all_peaks)
+        cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64000
+source ~/.bashrc;
+source activate ATACseq_env;
+module load homer; 
+mergePeaks -d 200 {all_peaks} > {self.data_path + "/merged/" + "merged_peaks_HOMER.bed"};
+        '''
+        f = open(f'{self.submission_path}/merge_peaks.sh', 'w+')
+        f.write(cmd)
+        f.close()
+        if self.dry_run:
+            print(f'created {self.submission_path}/merge_peaks.sh')
+        else:
+            os.system(f'sbatch {self.submission_path}/merge_peaks.sh')
+        return None
+
     def filter_blacklist(self, blacklist_file): 
         '''
         Remove regions that are known to interfere with ATAC-seq & Chip-seq 
@@ -350,6 +444,8 @@ macs3 callpeak -t {bam} \
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+source ~/.bashrc;
+source activate ATACseq_env;
 module load bedtools; 
 bedtools intersect -v -a {peaks} -b {blacklist_file} > {filtered};
             '''
@@ -371,6 +467,8 @@ bedtools intersect -v -a {peaks} -b {blacklist_file} > {filtered};
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+source ~/.bashrc;
+source activate ATACseq_env;
 module load samtools;
 samtools view {bam} | cut -f9 > {insert_sizes};
             '''
@@ -405,6 +503,45 @@ python plot_insertsizes.py {self.data_path} {self.ssheet_path};
             print(f'created {self.submission_path}/plot_isize.sh')
         else:
             os.system(f'sbatch {self.submission_path}/plot_isize.sh')
+        return None 
+
+    def optimize_p_value_macs(self, start=0.01, end=0.25, num=25):
+        '''
+        *** RUN WITH CAUTION: HUGE RUNTIME INCREASE ***
+        Optimize p-value cutoff for MACS peak calling. Will search all p-values within a given
+        (start, stop, # of vals) range. Uses numpy.linspace to generate a list of q-values.
+        '''
+        if not os.path.exists(self.data_path + '/optimize_pval/'):
+            os.makedirs(self.data_path + '/optimize_pval/')
+        self.pval_range = np.linspace(start, end, num)
+        for index, sample in self.ssheet.iterrows():
+            bam = f'{self.data_path + "/bams_noDups/" + sample["SampleName"] + ".bam"}'
+            for pval in self.pval_range:
+                cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64000
+source ~/.bashrc;
+source activate ATACseq_env;
+macs3 callpeak -t {bam} \
+--outdir {self.data_path + '/optimize_pval/'} \
+--name {sample["SampleName"] + "_" + "pval_" + str(pval)} --format BAMPE -g mm --nomodel \
+-p {pval} --call-summits -B;
+                '''
+                f = open(f'{self.submission_path}/optimize_qval_{sample["SampleName"] + "_" + "qval_" + str(qval)}.sh', 'w+')
+                f.write(cmd)
+                f.close()
+                if self.dry_run:
+                    print(f'created {self.submission_path}/optimize_qval_{sample["SampleName"] + "_" + "qval_" + str(qval)}.sh')
+                else:
+                    os.system(f'sbatch {self.submission_path}/optimize_qval_{sample["SampleName"] + "_" + "qval_" + str(qval)}.sh')
+        return None
+    
+    def return_best_pval(self):
+        '''
+        Evaluate the best p-value and pick out the resultant files. Default to a p-value of 0.05
+        if "elbow" cannot be estabblished. 
+        '''
+
         return None 
 
     
