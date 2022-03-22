@@ -10,8 +10,9 @@ import pandas as pd
 import numpy as np 
 import glob, os 
 import itertools
-
-
+import networkx as nx
+import re 
+import matplotlib.pyplot as plt
 
 
 class Pipeline(): 
@@ -26,7 +27,10 @@ class Pipeline():
         if not os.path.exists(self.submission_path):
             os.makedirs(self.submission_path)
         self.dry_run = dry_run
-
+        self.output_file_dir = data_path + '/slurm_outputs'
+        if not os.path.exists(self.output_file_dir):
+            os.makedirs(self.output_file_dir)
+        
         # !!!!!!!!!  Load the conda environment here
         return None 
     
@@ -62,19 +66,20 @@ class Pipeline():
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 module load bowtie2;
 module load samtools;
 bowtie2 -x {genome_path} -1 {sample['Read1']} -2 {sample['Read2']} | samtools sort -o {self.data_path + '/bams/' +  sample_name};
             '''
-            f = open(f'{self.submission_path}/align_{sample["SampleName"]}.sh', 'w+')
+            f = open(f'{self.submission_path}/align_fastqs_{sample["SampleName"]}.sh', 'w+')
             f.write(cmd)
             f.close()
             if self.dry_run:
-                print(f'created {self.submission_path}/align_{sample["SampleName"]}.sh')
+                print(f'created {self.submission_path}/align_fastqs_{sample["SampleName"]}.sh')
             else: 
-                os.system(f'sbatch {self.submission_path}/align_{sample["SampleName"]}.sh')
+                os.system(f'sbatch {self.submission_path}/align_fastqs_{sample["SampleName"]}.sh')
         return None
 
     def legacy_remove_duplicates(self):
@@ -96,6 +101,7 @@ bowtie2 -x {genome_path} -1 {sample['Read1']} -2 {sample['Read2']} | samtools so
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 module load gatk;
@@ -126,17 +132,18 @@ gatk MarkDuplicates -I {bam} -O {bam_noDups} -M {metrics_file} --REMOVE_DUPLICAT
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 python {self.app_path + '/bam_whitelist.py'} {bam} {whitelist_file} {bam_noMito};
             '''
-            f = open(f'{self.submission_path}/removeMito_{sample["SampleName"]}.sh', 'w+')
+            f = open(f'{self.submission_path}/remove_mito_{sample["SampleName"]}.sh', 'w+')
             f.write(cmd)
             f.close()
             if self.dry_run:
-                print(f'created {self.submission_path}/removeMito_{sample["SampleName"]}.sh')
+                print(f'created {self.submission_path}/remove_mito_{sample["SampleName"]}.sh')
             else: 
-                os.system(f'sbatch {self.submission_path}/removeMito_{sample["SampleName"]}.sh')
+                os.system(f'sbatch {self.submission_path}/remove_mito_{sample["SampleName"]}.sh')
         return None 
 
     def quality_control(self):
@@ -155,18 +162,19 @@ python {self.app_path + '/bam_whitelist.py'} {bam} {whitelist_file} {bam_noMito}
         cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 module load fastqc;
 fastqc {bam_list} -o {self.data_path + '/fastqc/'};
         '''
-        f = open(f'{self.submission_path}/fastqc_{sample["SampleName"]}.sh', 'w+')
+        f = open(f'{self.submission_path}/quality_control_{sample["SampleName"]}.sh', 'w+')
         f.write(cmd)
         f.close()
         if self.dry_run:
-            print(f'created {self.submission_path}/fastqc_{sample["SampleName"]}.sh')
+            print(f'created {self.submission_path}/quality_control_{sample["SampleName"]}.sh')
         else:
-            os.system(f'sbatch {self.submission_path}/fastqc_{sample["SampleName"]}.sh')
+            os.system(f'sbatch {self.submission_path}/quality_control_{sample["SampleName"]}.sh')
         return None 
     
     def pileup_reads(self): 
@@ -183,18 +191,19 @@ fastqc {bam_list} -o {self.data_path + '/fastqc/'};
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 module load samtools; 
 samtools mpileup {bam} -o {pileup};            
             '''
-            f = open(f'{self.submission_path}/pileup_{sample["SampleName"]}.sh', 'w+')
+            f = open(f'{self.submission_path}/pileup_reads_{sample["SampleName"]}.sh', 'w+')
             f.write(cmd)
             f.close()
             if self.dry_run:
-                print(f'created {self.submission_path}/pileup_{sample["SampleName"]}.sh')
+                print(f'created {self.submission_path}/pileup_reads_{sample["SampleName"]}.sh')
             else: 
-                os.system(f'sbatch {self.submission_path}/pileup_{sample["SampleName"]}.sh')
+                os.system(f'sbatch {self.submission_path}/pileup_reads_{sample["SampleName"]}.sh')
         return None 
     
     def call_peaks_joint(self): 
@@ -220,6 +229,7 @@ samtools mpileup {bam} -o {pileup};
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 macs3 callpeak -t {treatment_files} \
@@ -227,13 +237,13 @@ macs3 callpeak -t {treatment_files} \
 --name {control}_{treatment} --format BAMPE -g mm --nomodel \
 -q 0.01 --call-summits -B;
             '''
-            f = open(f'{self.submission_path}/macs3_{control}_{treatment}.sh', 'w+')
+            f = open(f'{self.submission_path}/call_peaks_joint_{control}_{treatment}.sh', 'w+')
             f.write(cmd)
             f.close()
             if self.dry_run:
-                print(f'created {self.submission_path}/macs3_{control}_{treatment}.sh')
+                print(f'created {self.submission_path}/call_peaks_joint_{control}_{treatment}.sh')
             else:
-                os.system(f'sbatch {self.submission_path}/macs3_{control}_{treatment}.sh')
+                os.system(f'sbatch {self.submission_path}/call_peaks_joint_{control}_{treatment}.sh')
         return None
 
     def remove_duplicates(self):
@@ -255,6 +265,7 @@ macs3 callpeak -t {treatment_files} \
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 module load samtools; 
@@ -263,14 +274,15 @@ samtools fixmate -m {collated} {fixmated};
 samtools sort -o {sorted} {fixmated};
 samtools markdup -r {sorted} {noDups};            
             '''
-            f = open(f'{self.submission_path}/removeDups_{sample["SampleName"]}.sh', 'w+')
+            f = open(f'{self.submission_path}/remove_duplicates_{sample["SampleName"]}.sh', 'w+')
             f.write(cmd)
             f.close()
             if self.dry_run:
-                print(f'created {self.submission_path}/removeDups_{sample["SampleName"]}.sh')
+                print(f'created {self.submission_path}/remove_duplicates_{sample["SampleName"]}.sh')
             else: 
-                os.system(f'sbatch {self.submission_path}/removeDups_{sample["SampleName"]}.sh')
+                os.system(f'sbatch {self.submission_path}/remove_duplicates_{sample["SampleName"]}.sh')
         return None
+
     def get_stats(self):
         '''
         Calculate statistics (% mapped, % duplicate, % Mitochondrial) from BAM
@@ -288,6 +300,7 @@ samtools markdup -r {sorted} {noDups};
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 module load samtools;
@@ -320,22 +333,23 @@ wc -l {peaks} > {self.data_path + "/stats/" + sample["SampleName"] + ".peaks"};
         for index, sample in self.ssheet.iterrows():
             bam = f'{self.data_path + "/bams_noDups/" + sample["SampleName"] + ".bam"}'
             cmd = f'''#! /usr/bin/bash
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64000
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 macs3 callpeak -t {bam} \
 --outdir {self.data_path + '/macs3/'} \
 --name {sample["SampleName"]} --format BAMPE -g mm --nomodel \
--q 0.1 --call-summits -B;
+-p 0.1 --call-summits -B --shift 100 --extsize 200;
             '''
-            f = open(f'{self.submission_path}/macs3_{sample["SampleName"]}.sh', 'w+')
+            f = open(f'{self.submission_path}/call_peaks_{sample["SampleName"]}.sh', 'w+')
             f.write(cmd)
             f.close()
             if self.dry_run:
-                print(f'created {self.submission_path}/macs3_{sample["SampleName"]}.sh')
+                print(f'created {self.submission_path}/call_peaks_{sample["SampleName"]}.sh')
             else:
-                os.system(f'sbatch {self.submission_path}/macs3_{sample["SampleName"]}.sh') 
+                os.system(f'sbatch {self.submission_path}/call_peaks_{sample["SampleName"]}.sh') 
         return None 
 
     def job_monitor(self): 
@@ -359,6 +373,7 @@ macs3 callpeak -t {bam} \
         cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 htseq-count -i peak_name --type=Peak --stranded=no {bam_files} {merged_peaks} > {self.data_path + '/counts/' + 'combined_counts.counts'};
@@ -387,6 +402,7 @@ htseq-count -i peak_name --type=Peak --stranded=no {bam_files} {merged_peaks} > 
         cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 module load bedtools; 
@@ -416,6 +432,7 @@ cat {all_peaks} | sort -k1,1 -k2,2n | bedtools merge -i - > {self.data_path + "/
         cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 module load homer; 
@@ -444,18 +461,19 @@ mergePeaks -d 200 {all_peaks} > {self.data_path + "/merged/" + "merged_peaks_HOM
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 module load bedtools; 
 bedtools intersect -v -a {peaks} -b {blacklist_file} > {filtered};
             '''
-            f = open(f'{self.submission_path}/filter_peaks_{sample["SampleName"]}.sh', 'w+')
+            f = open(f'{self.submission_path}/filter_blacklist_{sample["SampleName"]}.sh', 'w+')
             f.write(cmd)
             f.close()
             if self.dry_run:
-                print(f'created {self.submission_path}/filter_peaks_{sample["SampleName"]}.sh')
+                print(f'created {self.submission_path}/filter_blacklist_{sample["SampleName"]}.sh')
             else:
-                os.system(f'sbatch {self.submission_path}/filter_peaks_{sample["SampleName"]}.sh') 
+                os.system(f'sbatch {self.submission_path}/filter_blacklist_{sample["SampleName"]}.sh') 
         return None 
 
     def get_insert_sizes(self): 
@@ -467,18 +485,19 @@ bedtools intersect -v -a {peaks} -b {blacklist_file} > {filtered};
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 module load samtools;
 samtools view {bam} | cut -f9 > {insert_sizes};
             '''
-            f = open(f'{self.submission_path}/get_isize_{sample["SampleName"]}.sh', 'w+')
+            f = open(f'{self.submission_path}/get_insert_sizes_{sample["SampleName"]}.sh', 'w+')
             f.write(cmd)
             f.close()
             if self.dry_run:
-                print(f'created {self.submission_path}/get_isize_{sample["SampleName"]}.sh')
+                print(f'created {self.submission_path}/get_insert_sizes_{sample["SampleName"]}.sh')
             else:
-                os.system(f'sbatch {self.submission_path}/get_isize_{sample["SampleName"]}.sh') 
+                os.system(f'sbatch {self.submission_path}/get_insert_sizes_{sample["SampleName"]}.sh') 
         return None 
     
     def plot_insert_sizes(self):
@@ -492,17 +511,18 @@ samtools view {bam} | cut -f9 > {insert_sizes};
         cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 python plot_insertsizes.py {self.data_path} {self.ssheet_path};
         '''
-        f = open(f'{self.submission_path}/plot_isize.sh', 'w+')
+        f = open(f'{self.submission_path}/plot_insert_sizes.sh', 'w+')
         f.write(cmd)
         f.close()
         if self.dry_run:
-            print(f'created {self.submission_path}/plot_isize.sh')
+            print(f'created {self.submission_path}/plot_insert_sizes.sh')
         else:
-            os.system(f'sbatch {self.submission_path}/plot_isize.sh')
+            os.system(f'sbatch {self.submission_path}/plot_insert_sizes.sh')
         return None 
 
     def optimize_p_value_macs(self, start=0.01, end=0.25, num=25):
@@ -520,6 +540,7 @@ python plot_insertsizes.py {self.data_path} {self.ssheet_path};
                 cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
 macs3 callpeak -t {bam} \
@@ -527,21 +548,71 @@ macs3 callpeak -t {bam} \
 --name {sample["SampleName"] + "_" + "pval_" + str(pval)} --format BAMPE -g mm --nomodel \
 -p {pval} --call-summits -B;
                 '''
-                f = open(f'{self.submission_path}/optimize_qval_{sample["SampleName"] + "_" + "qval_" + str(qval)}.sh', 'w+')
+                f = open(f'{self.submission_path}/optimize_p_value_macs_{sample["SampleName"] + "_" + "pval_" + str(pval)}.sh', 'w+')
                 f.write(cmd)
                 f.close()
                 if self.dry_run:
-                    print(f'created {self.submission_path}/optimize_qval_{sample["SampleName"] + "_" + "qval_" + str(qval)}.sh')
+                    print(f'created {self.submission_path}/optimize_p_value_macs_{sample["SampleName"] + "_" + "pval_" + str(pval)}.sh')
                 else:
-                    os.system(f'sbatch {self.submission_path}/optimize_qval_{sample["SampleName"] + "_" + "qval_" + str(qval)}.sh')
+                    os.system(f'sbatch {self.submission_path}/optimize_p_value_macs_{sample["SampleName"] + "_" + "pval_" + str(pval)}.sh')
         return None
     
     def return_best_pval(self):
         '''
         Evaluate the best p-value and pick out the resultant files. Default to a p-value of 0.05
-        if "elbow" cannot be estabblished. 
+        if "elbow" cannot be established. 
         '''
-
         return None 
 
+    def submit_dag(self): 
+        '''
+        Use networkx to create a dag of job dependencies and submit. 
+        '''
+
+        ##### Pipeline #####
+        pipe = [("root", "align_fastqs"),
+        ("align_fastqs", "remove_mito"),
+        ("remove_mito", "remove_duplicates"),
+        ("remove_duplicates", "call_peaks"),
+        ("remove_duplicates", "quality_control"),
+        ("remove_duplicates", "optimize_p_value_macs"),
+        ]
+        dag = nx.DiGraph()
+        dag.add_edges_from(pipe)
+        G = nx.DiGraph()
+        G.add_edges_from(pipe) 
+        gen = nx.topological_sort(G)
+        nx.draw_spectral(G, with_labels=True, font_weight='bold')
+        plt.savefig(f'{self.data_path}/figs/dag.png')
+        ##### END #####
+
+        ##### Submit DAG Jobs #####
+        dependency_list = []
+        for proc in gen:
+            if proc == "root":
+                continue
+            else: 
+                # Search for all submission scripts and submit them
+                tmp = glob.glob(f'{self.submission_path}/*{proc}*.sh')
+                for submission in glob.glob(f'{self.submission_path}/*{proc}*.sh'):
+                    # get job number 
+                    if dependency_list == []:
+                        reply = os.popen(f'sbatch {submission}').read()
+                        if re.match(r'Submitted batch job (\d+)', reply):
+                            job_num = re.match(r'Submitted batch job (\d+)', reply).group(1)
+                            dependency_list.append(job_num)
+                        else:
+                            print(f'{submission} failed to submit')
+                    else: 
+                        reply = os.popen(f'sbatch --dependency=after:{":".join(dependency_list)} {submission}').read()
+                        if re.match(r'Submitted batch job (\d+)', reply):
+                            job_num = re.match(r'Submitted batch job (\d+)', reply).group(1)
+                            dependency_list.append(job_num)
+        # "It works" >>>>>>
+        # "But I have no idea why" <<<<<<
+        ##### END #####
+        
+
+
+        return None
     
