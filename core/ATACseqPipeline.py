@@ -13,6 +13,7 @@ import itertools
 import networkx as nx
 import re 
 import matplotlib.pyplot as plt
+import shutil
 
 
 class Pipeline(): 
@@ -322,7 +323,7 @@ wc -l {peaks} > {self.data_path + "/stats/" + sample["SampleName"] + ".peaks"};
                 os.system(f'sbatch {self.submission_path}/get_stats_{sample["SampleName"]}.sh')
         return None 
     
-    def call_peaks(self):
+    def legacy_call_peaks(self):
         '''
         Use MACS3 to call peaks. MACS3 now does a lot of the downstream processing (peak calling,
         differential peaks & basic plotting)
@@ -341,7 +342,7 @@ source activate ATACseq_env;
 macs3 callpeak -t {bam} \
 --outdir {self.data_path + '/macs3/'} \
 --name {sample["SampleName"]} --format BAMPE -g mm --nomodel \
--p 0.1 --call-summits -B --shift 100 --extsize 200;
+-p 0.1 --call-summits -B --shift -100 --extsize 200;
             '''
             f = open(f'{self.submission_path}/call_peaks_{sample["SampleName"]}.sh', 'w+')
             f.write(cmd)
@@ -352,31 +353,162 @@ macs3 callpeak -t {bam} \
                 os.system(f'sbatch {self.submission_path}/call_peaks_{sample["SampleName"]}.sh') 
         return None 
 
-    def job_monitor(self): 
+    def call_peaks_macs2(self):
+        '''
+        Use MACS2 to call peaks. MACS2 now does a lot of the downstream processing (peak calling,
+        differential peaks & basic plotting)
+        Trying out Harvard guidelines
+        '''
+        if not os.path.exists(self.data_path + '/macs2/'):
+            os.makedirs(self.data_path + '/macs2/')
+        ##### NEW 
+        for index, sample in self.ssheet.iterrows():
+            bed = f'{self.data_path + "/beds/" + sample["SampleName"] + ".bed"}'
+            cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128000
+#SBATCH --output={self.output_file_dir}/%j.out
+source ~/.bashrc;
+source activate ATACseq_env;
+macs2 callpeak -t {bed} \
+--outdir {self.data_path + '/macs2/'} \
+--name {sample["SampleName"]} --format BED -g mm -B --shift -100 --extsize 200 --SPMR -p 0.05;
+            '''
+            f = open(f'{self.submission_path}/call_peaks_macs2{sample["SampleName"]}.sh', 'w+')
+            f.write(cmd)
+            f.close()
+            if self.dry_run:
+                print(f'created {self.submission_path}/call_peaks_macs2{sample["SampleName"]}.sh')
+            else:
+                os.system(f'sbatch {self.submission_path}/call_peaks_macs2{sample["SampleName"]}.sh') 
         return None 
+
+    def bam_to_bed(self):
+        '''
+        Convert BAM to BED
+        '''
+        if not os.path.exists(self.data_path + '/beds/'):
+            os.makedirs(self.data_path + '/beds/')
+        for index, sample in self.ssheet.iterrows():
+            bam = f'{self.data_path + "/bams_noDups/" + sample["SampleName"] + ".bam"}'
+            bed = f'{self.data_path + "/beds/" + sample["SampleName"] + ".bed"}'
+            cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64000
+#SBATCH --output={self.output_file_dir}/%j.out
+source ~/.bashrc;
+source activate ATACseq_env;
+module load bedtools;
+bedtools bamtobed -i {bam} > {bed};
+            '''
+            f = open(f'{self.submission_path}/bam_to_bed_{sample["SampleName"]}.sh', 'w+')
+            f.write(cmd)
+            f.close()
+            if self.dry_run:
+                print(f'created {self.submission_path}/bam_to_bed_{sample["SampleName"]}.sh')
+            else:
+                os.system(f'sbatch {self.submission_path}/bam_to_bed_{sample["SampleName"]}.sh')
+        return None
+            
+    def fastqc(self):
+        '''
+        Run FastQC on BAM files. 
+        '''
+        if not os.path.exists(self.data_path + '/fastqc/'):
+            os.makedirs(self.data_path + '/fastqc/')
+        for index, sample in self.ssheet.iterrows():
+            bam = f'{self.data_path + "/bams_noDups/" + sample["SampleName"] + ".bam"}'
+            cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128000
+#SBATCH --output={self.output_file_dir}/%j.out
+source ~/.bashrc;
+source activate ATACseq_env;
+fastqc {bam} -o {self.data_path + '/fastqc/'};
+            '''
+            f = open(f'{self.submission_path}/fastqc_{sample["SampleName"]}.sh', 'w+')
+            f.write(cmd)
+            f.close()
+            if self.dry_run:
+                print(f'created {self.submission_path}/fastqc_{sample["SampleName"]}.sh')
+            else:
+                os.system(f'sbatch {self.submission_path}/fastqc_{sample["SampleName"]}.sh')
+
+        return None 
+
+    def multiqc_report(self):
+        '''
+        Generate a multiqc report
+        ''' 
+        if not os.path.exists(self.data_path + '/multiqc/'):
+            os.makedirs(self.data_path + '/multiqc/')
+
+        cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128000
+#SBATCH --output={self.output_file_dir}/%j.out
+source ~/.bashrc;
+source activate ATACseq_env;
+multiqc {self.data_path + '/fastqc/'} -o {self.data_path + '/multiqc/'};
+            '''
+        f = open(f'{self.submission_path}/multiqc.sh', 'w+')
+        f.write(cmd)
+        f.close()
+        if self.dry_run:
+            print(f'created {self.submission_path}/multiqc.sh')
+        else:
+            os.system(f'sbatch {self.submission_path}/multiqc.sh')
+        
+        return None
     
     def run_pipeline(self): 
         return None 
 
-    def peak_counts(self):
+    def bed_to_gtf(self): 
         '''
-        Generate counts from bam using HTseq-count 
+        Convert merged BED peaks  to GTF for use in feature Counts 
         '''
-        if not os.path.exists(self.data_path + '/counts/'):
-            os.makedirs(self.data_path + '/counts/')
-        merged_peaks = f'{self.data_path + "/merged/merged_peaks.bed"}'
-        bam_files = []
-        for index, sample in self.ssheet.iterrows():
-            bam = f'{self.data_path + "/bams_noDups/" + sample["SampleName"] + ".bam"}'
-            bam_files.append(bam)
-        bam_files = ' '.join(bam_files)
+        bed = f'{self.data_path + "/merged/merged_peaks_HOMER.bed"}'
+        gtf = f'{self.data_path + "/merged/merged_peaks_HOMER.gtf"}'
         cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
-htseq-count -i peak_name --type=Peak --stranded=no {bam_files} {merged_peaks} > {self.data_path + '/counts/' + 'combined_counts.counts'};
+python bed2gtf.py -i {bed} -o {gtf};
+        '''
+        f = open(f'{self.submission_path}/bed_to_gtf.sh', 'w+')
+        f.write(cmd)
+        f.close()
+        if self.dry_run:
+            print(f'created {self.submission_path}/bed_to_gtf.sh')
+        else:
+            os.system(f'sbatch {self.submission_path}/bed_to_gtf.sh')
+        return None 
+
+    def peak_counts(self):
+        '''
+        Generate counts from bam using subread featureCounts.
+        WAY faster than HTseq-count 
+        '''
+        if not os.path.exists(self.data_path + '/counts/'):
+            os.makedirs(self.data_path + '/counts/')
+        merged_peaks = f'{self.data_path + "/merged/merged_peaks_HOMER.gtf"}'
+        bam_files = []
+        for index, sample in self.ssheet.iterrows():
+            bam = f'{self.data_path + "/bams_noDups/" + sample["SampleName"] + ".bam"}'
+            bam_files.append(bam)
+        bam_files = ' '.join(bam_files)
+        counts = f'{self.data_path + "/counts/peak_counts.counts"}'
+        cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128000
+#SBATCH --output={self.output_file_dir}/%j.out
+source ~/.bashrc;
+source activate ATACseq_env;
+module load subread;
+featureCounts -T 16 -a {merged_peaks} -t 'peak' -g 'peak_id' -o {counts} {bam_files};
         '''
         f = open(f'{self.submission_path}/peak_counts.sh', 'w+')
         f.write(cmd)
@@ -387,6 +519,7 @@ htseq-count -i peak_name --type=Peak --stranded=no {bam_files} {merged_peaks} > 
             os.system(f'sbatch {self.submission_path}/peak_counts.sh')
         return None 
     
+    
     def legacy_merge_peaks(self): 
         '''
         Merge Peaks to create a single peak file. "union" of peaks, not intersection. 
@@ -395,7 +528,7 @@ htseq-count -i peak_name --type=Peak --stranded=no {bam_files} {merged_peaks} > 
             os.makedirs(self.data_path + '/merged/')
         all_peaks = []
         for index, sample in self.ssheet.iterrows():
-            peaks = f'{self.data_path + "/macs3/" + sample["SampleName"] + "_peaks.narrowPeak"}'
+            peaks = f'{self.data_path + "/macs2/" + sample["SampleName"] + "_peaks.narrowPeak"}'
             all_peaks.append(peaks)
         all_peaks = ' '.join(all_peaks)
         # print(all_peaks)
@@ -425,7 +558,7 @@ cat {all_peaks} | sort -k1,1 -k2,2n | bedtools merge -i - > {self.data_path + "/
             os.makedirs(self.data_path + '/merged/')
         all_peaks = []
         for index, sample in self.ssheet.iterrows():
-            peaks = f'{self.data_path + "/macs3/" + sample["SampleName"] + "_peaks.narrowPeak"}'
+            peaks = f'{self.data_path + "/macs2/" + sample["SampleName"] + "_peaks.narrowPeak"}'
             all_peaks.append(peaks)
         all_peaks = ' '.join(all_peaks)
         # print(all_peaks)
@@ -533,20 +666,24 @@ python plot_insertsizes.py {self.data_path} {self.ssheet_path};
         '''
         if not os.path.exists(self.data_path + '/optimize_pval/'):
             os.makedirs(self.data_path + '/optimize_pval/')
+        else:
+            shutil.rmtree(self.data_path + '/optimize_pval/')
+            os.makedirs(self.data_path + '/optimize_pval/')
+
         self.pval_range = np.linspace(start, end, num)
         for index, sample in self.ssheet.iterrows():
-            bam = f'{self.data_path + "/bams_noDups/" + sample["SampleName"] + ".bam"}'
+            bed = f'{self.data_path + "/beds/" + sample["SampleName"] + ".bed"}'
             for pval in self.pval_range:
                 cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
-#SBATCH --output={self.output_file_dir}/%j.out
+#SBATCH --output={self.data_path + '/optimize_pval/'}/%j_{sample["SampleName"]}_{pval}.out
 source ~/.bashrc;
 source activate ATACseq_env;
-macs3 callpeak -t {bam} \
+macs2 callpeak -t {bed} \
 --outdir {self.data_path + '/optimize_pval/'} \
---name {sample["SampleName"] + "_" + "pval_" + str(pval)} --format BAMPE -g mm --nomodel \
--p {pval} --call-summits -B;
+--format BED -g mm -B --shift -100 -p {pval} \
+--extsize 200 --SPMR -n {sample["SampleName"]}_{pval};
                 '''
                 f = open(f'{self.submission_path}/optimize_p_value_macs_{sample["SampleName"] + "_" + "pval_" + str(pval)}.sh', 'w+')
                 f.write(cmd)
@@ -562,27 +699,43 @@ macs3 callpeak -t {bam} \
         Evaluate the best p-value and pick out the resultant files. Default to a p-value of 0.05
         if "elbow" cannot be established. 
         '''
+        if not os.path.exists(self.data_path + '/optimize_pval/'):
+            raise FileNotFoundError('Optimize_pval directory not found. Run optimize_p_value_macs() first.')
+
+        if not os.path.exists(self.data_path + '/slurm_outputs/'):
+            raise FileNotFoundError('Cannot find slurm outputs directory.')
+        
+        # loop through files and find best p-value
+        for index, sample in self.ssheet.iterrows():
+            fname = str(sample['SampleName'])
+            for peakcall in glob.glob(f'{self.data_path + "/optimize_pval/*" + fname + "*.xls"}'):
+                try: 
+                    f = open(peakcall, 'r')
+                    pval = re.match(r'# name = (\w+)_pval_(\d.+)').group(2)
+                    mean_frag_size = re.match(r'mean fragment size is determined as (\d.+) bp from treatment').group(1)
+                    f.close()
+                except:
+                    pass
         return None 
+
 
     def submit_dag(self): 
         '''
         Use networkx to create a dag of job dependencies and submit. 
         '''
-
+        gen = None
         ##### Pipeline #####
         pipe = [("root", "align_fastqs"),
         ("align_fastqs", "remove_mito"),
         ("remove_mito", "remove_duplicates"),
-        ("remove_duplicates", "call_peaks"),
-        ("remove_duplicates", "quality_control"),
-        ("remove_duplicates", "optimize_p_value_macs"),
+        ("remove_duplicates", "call_peaks")
+        # ("remove_duplicates", "quality_control"),
+        # ("remove_duplicates", "optimize_p_value_macs"),
         ]
         dag = nx.DiGraph()
         dag.add_edges_from(pipe)
-        G = nx.DiGraph()
-        G.add_edges_from(pipe) 
-        gen = nx.topological_sort(G)
-        nx.draw_spectral(G, with_labels=True, font_weight='bold')
+        gen = nx.topological_sort(dag)
+        nx.draw_spectral(dag, with_labels=True, font_weight='bold')
         plt.savefig(f'{self.data_path}/figs/dag.png')
         ##### END #####
 
@@ -593,26 +746,25 @@ macs3 callpeak -t {bam} \
                 continue
             else: 
                 # Search for all submission scripts and submit them
-                tmp = glob.glob(f'{self.submission_path}/*{proc}*.sh')
-                for submission in glob.glob(f'{self.submission_path}/*{proc}*.sh'):
+                this_dependencies = []
+                for submission in glob.glob(f'{self.submission_path}/{proc}*.sh'):
                     # get job number 
                     if dependency_list == []:
                         reply = os.popen(f'sbatch {submission}').read()
                         if re.match(r'Submitted batch job (\d+)', reply):
                             job_num = re.match(r'Submitted batch job (\d+)', reply).group(1)
-                            dependency_list.append(job_num)
+                            this_dependencies.append(job_num)
                         else:
                             print(f'{submission} failed to submit')
                     else: 
                         reply = os.popen(f'sbatch --dependency=after:{":".join(dependency_list)} {submission}').read()
                         if re.match(r'Submitted batch job (\d+)', reply):
                             job_num = re.match(r'Submitted batch job (\d+)', reply).group(1)
-                            dependency_list.append(job_num)
+                            this_dependencies.append(job_num)
+                dependency_list.extend(this_dependencies)
+            print(dependency_list)
         # "It works" >>>>>>
         # "But I have no idea why" <<<<<<
         ##### END #####
-        
-
-
         return None
     
