@@ -693,6 +693,26 @@ macs2 callpeak -t {bed} \
                 else:
                     os.system(f'sbatch {self.submission_path}/optimize_p_value_macs_{sample["SampleName"] + "_" + "pval_" + str(pval)}.sh')
         return None
+
+#     def shift_peaks(self): 
+#         '''
+#         Shift peaks by +4 and -5 bp for +ve and -ve strand. This has to be done to account for the offset 
+#         of Tn5 transposase. 
+#         '''
+#         if not os.path.exists(self.data_path + '/shifted_peaks/'):
+#             os.makedirs(self.data_path + '/shifted_peaks/')
+#         for index, sample in self.ssheet.iterrows():
+#             bed = f'{self.data_path + "/beds/" + sample["SampleName"] + ".bed"}
+#             cmd = f'''#! /usr/bin/bash
+# #SBATCH --cpus-per-task=8
+# #SBATCH --mem=64000
+# #SBATCH --output={self.output_file_dir}/%j.out
+# source ~/.bashrc;
+# source activate ATACseq_env;
+# module load bedtools; 
+# bedtools shift -i {bed} 
+#             '''
+#         return None 
     
     def return_best_pval(self):
         '''
