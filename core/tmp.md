@@ -53,6 +53,7 @@ You can also run individual parts of the pipeline, and the example python notebo
 
 Here is a schematic of what is being done: 
 
+[ATACseq_Pipeline.pdf](https://github.com/ScrippsPipkinLab/ATAC-seqPipeline/files/8403617/ATACseq_Pipeline.pdf)
 
 Please feel free to raise issues on Github or shoot me an email: \
 Shashank Nagaraja \
