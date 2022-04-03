@@ -15,7 +15,9 @@ To install from github, you can clone the repository using: \
 `git clone https://github.com/ScrippsPipkinLab/ATAC-seqPipeline.git`
 
 __Usage:__
-Sample metadata is entered into a simple txt file with the following columns: \
+
+Sample metadata is entered into a simple tab-delimited text file. Make sure to include the below columns in the correct order. See core/exp122_ssheet.txt for a template. 
+
 1. SampleName
 Unique sample name. Must be different for each replicate of each sample. Set this to Sample_ReplicateNumber when in doubt. 
 2. Read1 \
@@ -25,11 +27,10 @@ Path to R2 FASTQ file.
 4. Status \
 This respresents the group of replicates that represent the sample. The status is the same accross replicates. For example, this could be a RNAmir construct, or an organ, or even a cell type. 
 5. CT \
-Control or treatment status denoted by a C or T respectively. \
-\
-See core/exp122_ssheet.txt for a template. 
-The provided example notebook file goes through how to access the functions in an interactive Jupyter session. In brief, you can import the python library and setup your experiment with: \
+Control or treatment status denoted by a C or T respectively.
 
+See core/exp122_ssheet.txt for a template. 
+The provided example notebook file goes through how to access the functions in an interactive Jupyter session. In brief, you can import the python library and setup your experiment with: 
 ```
 import ATACseqPipeline
 myexp = ATACseqPipeline.Pipeline(data_path='path/to/empty/dir', dry_run=True, app_path='/ATACseqPipeline')
@@ -47,11 +48,7 @@ To view your submitted jobs as they complete, run the following in the shell. Yo
 squeue -u your_username
 ```
 Abort the running jobs using `core/cancel_job.sh` \
-This pipeline will submit several jobs that are dependent on each other. The runtime can reach several hours depending on the available nodes.
-
-You can also run individual parts of the pipeline, and the example python notebook provides an in-depth walkthrough of this. 
-
-Here is a schematic of what is being done: 
+This pipeline will submit several jobs that are dependent on each other. The runtime can reach several hours depending on the available nodes. You can also run individual parts of the pipeline, and the example python notebook provides an in-depth walkthrough of this. The output from every step is saved. This will cause quite a large amount of data to be saved (> 50 gigabytes for a 6 sample experiment). _It is up to the user to delete files saved in_ `/data`.
 
 ![alt text](https://github.com/ScrippsPipkinLab/ATAC-seqPipeline/files/8403617/ATACseq_Pipeline.pdf)
 
