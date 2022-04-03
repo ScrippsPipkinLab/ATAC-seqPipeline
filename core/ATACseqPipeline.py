@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import shutil
 
 
-class Pipeline(): 
+class Pipeline():
     def __init__(self, data_path, app_path, dry_run=False, conda=''): 
         print(os.getcwd())
         # Maybe I should check Python version and installations here!?
@@ -27,10 +27,8 @@ class Pipeline():
         self.submission_path = data_path + '/submissions'
         if os.path.exists(self.submission_path):
             shutil.rmtree(self.submission_path)
-        os.makedirs(self.submission_path)
-        
+        os.makedirs(self.submission_path)     
 
-        print(self.submission_path)
         self.dry_run = dry_run
         self.output_file_dir = data_path + '/slurm_outputs'
         if not os.path.exists(self.output_file_dir):
@@ -52,9 +50,6 @@ class Pipeline():
         '''
         self.ssheet_path = ssheet_path
         self.ssheet = pd.read_csv(ssheet_path, sep='\t')
-        #####
-        # print(self.ssheet.groupby('Status').count()['TechRep'])
-        #####
 
         return None 
 
@@ -163,7 +158,6 @@ python {self.app_path + '/bam_whitelist.py'} {bam} {whitelist_file} {bam_noMito}
             bam = f'{self.data_path + "/bams_noMito/" + sample["SampleName"] + ".bam"}'
             bam_list.append(bam)
         bam_list = ' '.join(bam_list)
-        # print(bam_list)
         cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
@@ -376,7 +370,7 @@ source ~/.bashrc;
 source activate ATACseq_env;
 macs2 callpeak -t {bed} \
 --outdir {self.data_path + '/macs2/'} \
---name {sample["SampleName"]} --format BED -g mm -B --shift -100 --extsize 200 --SPMR -p 0.05;
+--name {sample["SampleName"]} --format BED -g mm -B --shift -100 --extsize 200 --SPMR -p 0.01;
             '''
             f = open(f'{self.submission_path}/call_peaks_macs2_{sample["SampleName"]}.sh', 'w+')
             f.write(cmd)
@@ -532,7 +526,6 @@ featureCounts -T 16 -a {merged_peaks} -t 'peak' -g 'peak_id' -o {counts} {bam_fi
             peaks = f'{self.data_path + "/macs2/" + sample["SampleName"] + "_peaks.narrowPeak"}'
             all_peaks.append(peaks)
         all_peaks = ' '.join(all_peaks)
-        # print(all_peaks)
         cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
@@ -562,7 +555,6 @@ cat {all_peaks} | sort -k1,1 -k2,2n | bedtools merge -i - > {self.data_path + "/
             peaks = f'{self.data_path + "/no_blacklist/" + sample["SampleName"] + "_peaks.narrowPeak"}'
             all_peaks.append(peaks)
         all_peaks = ' '.join(all_peaks)
-        # print(all_peaks)
         cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
@@ -795,7 +787,9 @@ bamCoverage -b {bam} -o {self.data_path + "/bigWigs/" + sample["SampleName"] + "
                 "peak_counts",
                 "bam_to_bigWig",
                 "get_insert_sizes",
-                "plot_insert_sizes"]
+                "plot_insert_sizes",
+                "fastqc", 
+                "multiqc_report"]
         dependency = {}
         for idx, proc in enumerate(pipe):
             proc_jobs = []
@@ -819,4 +813,9 @@ bamCoverage -b {bam} -o {self.data_path + "/bigWigs/" + sample["SampleName"] + "
                         print(f'{submission} failed to submit')
             dependency[proc] = proc_jobs
         print(dependency)        
+        return None
+
+class SingleEndPipeline(Pipeline):
+    def main(self):
+        print("shalom")
         return None
