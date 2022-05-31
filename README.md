@@ -50,7 +50,7 @@ squeue -u your_username
 Abort the running jobs using `core/cancel_job.sh` \
 This pipeline will submit several jobs that are dependent on each other. The runtime can reach several hours depending on the available nodes. You can also run individual parts of the pipeline, and the example python notebook provides an in-depth walkthrough of this. The output from every step is saved. This will cause quite a large amount of data to be saved (> 50 gigabytes for a 6 sample experiment). _It is up to the user to delete files saved in_ `/data`.
 
-![alt text](https://github.com/ScrippsPipkinLab/ATAC-seqPipeline/files/8403617/ATACseq_Pipeline.pdf)
+![alt text](https://github.com/ScrippsPipkinLab/ATAC-seqPipeline/ATACseq_Pipeline.pdf)
 
 Please feel free to raise issues on Github or shoot me an email: \
 Shashank Nagaraja \
