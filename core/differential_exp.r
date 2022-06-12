@@ -14,7 +14,7 @@ results_dir = args[3]
 # Assumes the results_dir has alreasy been created by python 
 
 ####
-coldata <- ssheet[, c("Status", "Batch", "CT")]
+coldata <- ssheet[, c("Status", "CT")]
 rownames(coldata) <- ssheet[, "SampleName"]
 print(coldata)
 
@@ -29,15 +29,24 @@ names(cts) <- name.vec
 mat = cts[,6:ncol(cts)]
 mat[is.na(mat)] <- 0
 
+print(str(mat))
+print(head(mat))
+
+print(str(coldata))
+print(head(coldata))
+
 dds <- DESeqDataSetFromMatrix(countData = mat,
                               colData = coldata,
-                              design= ~ Batch + Status)
+                              design= ~ Status)
 dds <- DESeq(dds)
 resultsNames(dds)
 #########
-for (control in unique(ssheet[ssheet$CT == "C","Status"])) {
-    for (treatment in unique(ssheet[ssheet$CT == "T","Status"])) {
-        # print(paste("Contrast: ", control, " vs ", treatment))
+for (control in unique(ssheet$Status)) {
+    for (treatment in unique(ssheet$Status)) {
+        if (control == treatment){
+            next
+        }
+        print(paste("Contrast: ", control, " vs ", treatment))
         res <- results(dds, contrast=c("Status", control, treatment),
                        independentFiltering=TRUE, parallel=TRUE)
         res <- lfcShrink(dds, contrast=c("Status", control, treatment), res=res, type="ashr")

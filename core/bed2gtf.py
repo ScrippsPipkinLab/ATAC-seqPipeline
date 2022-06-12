@@ -57,7 +57,7 @@ def run(infile, outfile):
         fin_pos = str(linea_split[3]).strip()
         strand = str(linea_split[4]).strip()        
 
-        outf.write(f'{chrom}\tmerged\tpeak\t{ini_pos}\t{fin_pos}\t.\t{strand}\t.\tpeak_id "{chrom}_{ini_pos}_{fin_pos}";\n')
+        outf.write(f'{chrom}\tmerged\tpeak\t{ini_pos}\t{fin_pos}\t.\t{strand}\t.\tpeak_id "{chrom}_{ini_pos}_{fin_pos}_{strand}";\n')
 
         cont += 1
 
