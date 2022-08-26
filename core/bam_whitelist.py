@@ -6,7 +6,7 @@
 
 
 import sys 
-import pysam 
+import pysam
 
 bam = sys.argv[1]
 whitelist = open(sys.argv[2], 'r').read().split('\n')

@@ -13,7 +13,7 @@ import itertools
 import re 
 import matplotlib.pyplot as plt
 import shutil
-
+import itertools
 
 class Pipeline():
     def __init__(self, data_path, app_path, dry_run=False, conda=''): 
@@ -63,10 +63,11 @@ class Pipeline():
         for index, sample in self.ssheet.iterrows():
             sample_name = sample['SampleName'] + '.bam'
             cmd = f'''#! /usr/bin/bash
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=128000
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=256000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=24:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -104,6 +105,7 @@ bowtie2 -x {genome_path} -1 {sample['Read1']} -2 {sample['Read2']} | samtools so
 #SBATCH --mem=64000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -137,6 +139,7 @@ gatk MarkDuplicates -I {bam} -O {bam_noDups} -M {metrics_file} --REMOVE_DUPLICAT
 #SBATCH --qos=scripps-dept
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -168,6 +171,7 @@ python {self.app_path + '/bam_whitelist.py'} {bam} {whitelist_file} {bam_noMito}
 #SBATCH --mem=64000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -199,6 +203,7 @@ fastqc {bam_list} -o {self.data_path + '/fastqc/'};
 #SBATCH --qos=scripps-dept
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -239,6 +244,7 @@ samtools mpileup {bam} -o {pileup};
 #SBATCH --mem=64000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -282,7 +288,7 @@ macs3 callpeak -t {treatment_files} \
 source ~/.bashrc;
 source activate ATACseq_env;
 module load samtools; 
-samtools collate -o {collated} {bam};
+samtools collate --threads 16 -o {collated} {bam} int_dir{sample["SampleName"]};
 samtools fixmate -m {collated} {fixmated};
 samtools sort -o {sorted_} {fixmated};
 samtools markdup -r {sorted_} {noDups};            
@@ -315,6 +321,7 @@ samtools markdup -r {sorted_} {noDups};
 #SBATCH --mem=64000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -350,6 +357,7 @@ wc -l {peaks} > {self.data_path + "/stats/" + sample["SampleName"] + ".peaks"};
             cmd = f'''#! /usr/bin/bash
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128000
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -383,6 +391,7 @@ macs3 callpeak -t {bam} \
 #SBATCH --mem=128000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -414,6 +423,7 @@ macs2 callpeak -t {bed} \
 #SBATCH --mem=64000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -442,6 +452,7 @@ bedtools bamtobed -i {bam} > {bed};
 #SBATCH --mem=128000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -469,6 +480,7 @@ fastqc {bam} -o {self.data_path + '/fastqc/'};
 #SBATCH --mem=128000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -530,6 +542,7 @@ python3 {self.app_path}/bed2gtf.py -i {bed} -o {gtf};
 #SBATCH --mem=128000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -562,6 +575,7 @@ featureCounts -T 16 -a {merged_peaks} -t 'peak' -g 'peak_id' -p -o {counts} {bam
 #SBATCH --mem=64000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -593,6 +607,7 @@ cat {all_peaks} | sort -k1,1 -k2,2n | bedtools merge -i - > {self.data_path + "/
 #SBATCH --mem=64000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -624,6 +639,7 @@ mergePeaks -d 200 {all_peaks} > {self.data_path + "/merged/" + "merged_peaks_HOM
 #SBATCH --mem=64000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -650,6 +666,7 @@ bedtools intersect -v -a {peaks} -b {blacklist_file} > {filtered};
 #SBATCH --mem=64000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -678,6 +695,7 @@ samtools view {bam} | cut -f9 > {insert_sizes};
 #SBATCH --mem=64000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -742,6 +760,7 @@ python plot_insertsizes.py {self.data_path} {self.ssheet_path};
 #SBATCH --mem=64000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -795,6 +814,7 @@ bedtools shift -i {bed} -g {genome_sizes} -p 4 -m -5 > {self.data_path + "/shift
 #SBATCH --mem=64000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 source ~/.bashrc;
 source activate ATACseq_env;
@@ -827,6 +847,7 @@ bamCoverage -b {bam} -o {self.data_path + "/bigWigs/" + sample["SampleName"] + "
 #SBATCH --mem=128000
 #SBATCH --account=scripps-dept
 #SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
 #SBATCH --output={self.output_file_dir}/%j.out
 #SBATCH --time=2:00:00
 source ~/.bashrc;
@@ -847,9 +868,67 @@ Rscript {differential_exp_script_path} {self.data_path + '/counts/peak_counts.co
         '''
         cut -f 2,3,4,5,6 merged_peaks_HOMER.bed | tail -n +2 | sort -k1,1V -k2,2n -k3,3n > merged_peaks_HOMER.formatted.bed;
         bedtools closest -a merged_peaks_HOMER.formatted.bed -b /blue/m.pipkin/s.nagaraja/MusRef/Mouse39Genes.bed -D -t first > matched_genes.txt;
-        
         '''
+        if not os.path.exists(self.data_path + '/deseq2/'):
+            try: 
+                raise FileNotFoundError
+            except Exception as error: 
+                (repr(error))
+
+        cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128000
+#SBATCH --account=scripps-dept
+#SBATCH --qos=scripps-dept
+#SBATCH --time=10:00:00
+#SBATCH --output={self.output_file_dir}/%j.out
+#SBATCH --time=2:00:00
+module load bedtools; 
+cut -f 2,3,4,5,6 {self.data_path + '/merged/'}merged_peaks_HOMER.bed | tail -n +2 | sort -k1,1V -k2,2n -k3,3n > {self.data_path + '/merged/'}merged_peaks_HOMER.formatted.bed;
+bedtools closest -a {self.data_path + '/merged/'}merged_peaks_HOMER.formatted.bed -b {gene_annotation_path} -D -t first > {self.data_path + '/merged/'}matched_genes.txt;
+        '''
+        f = open(f'{self.submission_path}/assign_peaks_to_genes.sh', 'w+')
+        f.write(cmd)
+        f.close()
+        if self.dry_run:
+            print(f'created {self.submission_path}/assign_peaks_to_genes.sh')
+        else:
+            os.system(f'sbatch {self.submission_path}/assign_peaks_to_genes.sh')
+
         return None 
+
+    def draw_venn_diagrams(self):
+        '''
+        Draw venn diagrams from narrowPeak files. Draw venn for every permutation of narrowpeak files.
+        '''
+        if not os.path.exists(self.data_path + '/venn/'):
+            os.makedirs(self.data_path + '/venn/')
+            
+        peaks = [f'{self.data_path + "/macs2/" + sample["SampleName"] + "_peaks.narrowPeak"}' for index, sample in self.ssheet.iterrows()]
+        print(peaks)
+        permutes = list(itertools.permutations(peaks, 2))
+        print(len(permutes))
+
+        for permute in permutes:
+            cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=16000
+#SBATCH --account=scripps-dept
+#SBATCH --qos=scripps-dept
+#SBATCH --output={self.output_file_dir}/%j.out
+#SBATCH --time=2:00:00
+source activate ATACseq_env;
+python {self.app_path}/venn_diagrams.py -A {permute[0]} -B {permute[1]} -O {self.data_path + '/venn'};
+    '''
+            f = open(f'{self.submission_path}/draw_venn_diagrams.sh', 'w+')
+            f.write(cmd)
+            f.close()
+            if self.dry_run:
+                print(f'created {self.submission_path}/draw_venn_diagrams.sh')
+            else:
+                os.system(f'sbatch {self.submission_path}/draw_venn_diagrams.sh')
+
+        return None
 
     def main(self): 
         '''
@@ -893,4 +972,40 @@ Rscript {differential_exp_script_path} {self.data_path + '/counts/peak_counts.co
                         print(f'{submission} failed to submit')
             dependency[proc] = proc_jobs
         print(dependency)        
+        return None
+
+class PipelineSE(Pipeline): 
+    '''
+    Alternate pipeline for single-ended data. 
+    '''
+    def align_fastqs(self, genome_path):
+        '''
+        Align fastq files using Bowtie2. Genome must be pre-indexed. 
+        ''' 
+        if not os.path.exists(self.data_path + '/bams/'):
+            os.makedirs(self.data_path + '/bams/')
+            print(self.data_path + '/bams/')
+        
+        for index, sample in self.ssheet.iterrows():
+            sample_name = sample['SampleName'] + '.bam'
+            cmd = f'''#! /usr/bin/bash
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=256000
+#SBATCH --account=scripps-dept
+#SBATCH --qos=scripps-dept
+#SBATCH --time=24:00:00
+#SBATCH --output={self.output_file_dir}/%j.out
+source ~/.bashrc;
+source activate ATACseq_env;
+module load bowtie2;
+module load samtools;
+bowtie2 -x {genome_path} -U {sample['Read1']} | samtools sort -o {self.data_path + '/bams/' +  sample_name};
+            '''
+            f = open(f'{self.submission_path}/align_fastqs_{sample["SampleName"]}.sh', 'w+')
+            f.write(cmd)
+            f.close()
+            if self.dry_run:
+                print(f'created {self.submission_path}/align_fastqs_{sample["SampleName"]}.sh')
+            else: 
+                os.system(f'sbatch {self.submission_path}/align_fastqs_{sample["SampleName"]}.sh')
         return None
