@@ -11,7 +11,7 @@ args = commandArgs(trailingOnly=TRUE)
 cts = read.table(args[1], header=TRUE, row.names=1)
 ssheet = read.table(args[2], header=TRUE, stringsAsFactors=TRUE)
 results_dir = args[3]
-# Assumes the results_dir has alreasy been created by python 
+# Assumes the results_dir has already been created by python 
 
 ####
 coldata <- ssheet[, c("Status", "CT")]
